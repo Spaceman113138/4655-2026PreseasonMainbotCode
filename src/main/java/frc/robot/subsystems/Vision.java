@@ -146,19 +146,27 @@ public class Vision extends SubsystemBase {
     }
 
     public void update(EstimateConsumer visionConsumer) {
-      poseEstimator.setPrimaryStrategy(PoseStrategy.CONSTRAINED_SOLVEPNP);
+      poseEstimator.setPrimaryStrategy(PoseStrategy.MULTI_TAG_PNP_ON_COPROCESSOR);
       poseEstimator.addHeadingData(Timer.getFPGATimestamp(), poseSupplier.get().getRotation());
       for (PhotonPipelineResult result : camera.getAllUnreadResults()) {
         var estimate =
             poseEstimator.update(
                 result, Optional.empty(), Optional.empty(), constrainedSolvePNPparam);
+
         if (estimate.isEmpty() || estimate.get().targetsUsed.isEmpty()) {
           estimatedPose = null;
           continue;
         }
 
-        System.out.println(poseEstimator.getPrimaryStrategy());
-        System.out.println(estimate.get().strategy);
+        var tempEstimatedPose = estimate.get().estimatedPose;
+        // Check if estimated pose is within the field
+        if (tempEstimatedPose.getX() < 0
+            || tempEstimatedPose.getX() > kTagLayout.getFieldLength()
+            || tempEstimatedPose.getY() < 0
+                && tempEstimatedPose.getY() > kTagLayout.getFieldWidth()) {
+          estimatedPose = null;
+          continue;
+        }
 
         estimatedPose = estimate.get();
         var target = estimatedPose.targetsUsed.get(0);
