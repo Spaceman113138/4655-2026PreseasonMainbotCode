@@ -4,27 +4,9 @@
 
 package frc.robot.subsystems;
 
-import java.util.List;
-import java.util.Optional;
-import java.util.function.Supplier;
-
-import javax.xml.crypto.dsig.Transform;
-
-import org.photonvision.EstimatedRobotPose;
-import org.photonvision.PhotonCamera;
-import org.photonvision.PhotonPoseEstimator;
-import org.photonvision.PhotonPoseEstimator.ConstrainedSolvepnpParams;
-import org.photonvision.PhotonPoseEstimator.PoseStrategy;
-import org.photonvision.simulation.PhotonCameraSim;
-import org.photonvision.simulation.SimCameraProperties;
-import org.photonvision.simulation.VisionSystemSim;
-import org.photonvision.targeting.PhotonPipelineResult;
-import org.photonvision.targeting.PhotonTrackedTarget;
-
 import edu.wpi.first.apriltag.AprilTagFieldLayout;
 import edu.wpi.first.apriltag.AprilTagFields;
 import edu.wpi.first.epilogue.Logged;
-import edu.wpi.first.epilogue.NotLogged;
 import edu.wpi.first.math.Matrix;
 import edu.wpi.first.math.VecBuilder;
 import edu.wpi.first.math.geometry.Pose2d;
@@ -37,10 +19,21 @@ import edu.wpi.first.math.numbers.N3;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Robot;
+import java.util.Optional;
+import java.util.function.Supplier;
+import org.photonvision.EstimatedRobotPose;
+import org.photonvision.PhotonCamera;
+import org.photonvision.PhotonPoseEstimator;
+import org.photonvision.PhotonPoseEstimator.ConstrainedSolvepnpParams;
+import org.photonvision.PhotonPoseEstimator.PoseStrategy;
+import org.photonvision.simulation.PhotonCameraSim;
+import org.photonvision.simulation.SimCameraProperties;
+import org.photonvision.simulation.VisionSystemSim;
+import org.photonvision.targeting.PhotonPipelineResult;
 
 @Logged
 public class Vision extends SubsystemBase {
-  //Sim stuff
+  // Sim stuff
   VisionSystemSim visionSim = new VisionSystemSim("main");
   Supplier<Pose3d> poseSupplier;
   private boolean useSim = true;
@@ -48,20 +41,35 @@ public class Vision extends SubsystemBase {
   private EstimateConsumer estimateConsumer;
 
   public static final AprilTagFieldLayout kTagLayout =
-                AprilTagFieldLayout.loadField(AprilTagFields.kDefaultField);
+      AprilTagFieldLayout.loadField(AprilTagFields.kDefaultField);
 
-
-  private Camera rightCamera = new Camera("Right", new Transform3d(0.22, -0.285, 0.494, new Rotation3d(0.0, 0.0, Math.toRadians(30))), visionSim, useSim);
-  private Camera leftCamera = new Camera("Left", new Transform3d(0.22, 0.285, 0.494, new Rotation3d(0.0, 0.0, Math.toRadians(-30))), visionSim, useSim);
-  private Camera lowerRightCamera = new Camera("Back", new Transform3d(0.22, 0.285, (0.494 - 0.245) + 0.0381, new Rotation3d(0.0, 0.0, Math.toRadians(-30))), visionSim, useSim);
-  private Camera lowerLeftCamera = new Camera("LowerLeft", new Transform3d(0.22, -0.285, (0.494 - 0.245) + 0.0381, new Rotation3d(0.0, 0.0, Math.toRadians(30))), visionSim, useSim);
-  private Camera[] cameras = {
-    rightCamera,
-    leftCamera,
-    lowerRightCamera,
-    lowerLeftCamera
-    
-  };
+  private Camera rightCamera =
+      new Camera(
+          "Right",
+          new Transform3d(0.22, -0.285, 0.494, new Rotation3d(0.0, 0.0, Math.toRadians(30))),
+          visionSim,
+          useSim);
+  private Camera leftCamera =
+      new Camera(
+          "Left",
+          new Transform3d(0.22, 0.285, 0.494, new Rotation3d(0.0, 0.0, Math.toRadians(-30))),
+          visionSim,
+          useSim);
+  private Camera lowerRightCamera =
+      new Camera(
+          "Back",
+          new Transform3d(
+              0.22, 0.285, (0.494 - 0.245) + 0.0381, new Rotation3d(0.0, 0.0, Math.toRadians(-30))),
+          visionSim,
+          useSim);
+  private Camera lowerLeftCamera =
+      new Camera(
+          "LowerLeft",
+          new Transform3d(
+              0.22, -0.285, (0.494 - 0.245) + 0.0381, new Rotation3d(0.0, 0.0, Math.toRadians(30))),
+          visionSim,
+          useSim);
+  private Camera[] cameras = {rightCamera, leftCamera, lowerRightCamera, lowerLeftCamera};
 
   /** Creates a new Vision. */
   public Vision(EstimateConsumer poseConsumer, Supplier<Pose3d> simPoseSupplier) {
@@ -82,90 +90,95 @@ public class Vision extends SubsystemBase {
     for (var camera : cameras) {
       camera.update(estimateConsumer);
     }
-
   }
 
-  @Override 
+  @Override
   public void simulationPeriodic() {
     visionSim.update(poseSupplier.get());
   }
 
   @FunctionalInterface
-    public static interface EstimateConsumer {
-        public void accept(Pose2d pose, double timestamp, Matrix<N3, N1> estimationStdDevs);
+  public static interface EstimateConsumer {
+    public void accept(Pose2d pose, double timestamp, Matrix<N3, N1> estimationStdDevs);
   }
-  
+
   @Logged
   public class Camera {
-      private Transform3d transform;
-      private PhotonCamera camera;
-      private PhotonPoseEstimator poseEstimator;
-      private EstimatedRobotPose estimatedPose;
-      private double xyStd = 0.0;
-      private double angStd = 0.0;
+    private Transform3d transform;
+    private PhotonCamera camera;
+    private PhotonPoseEstimator poseEstimator;
+    private EstimatedRobotPose estimatedPose;
+    private double xyStd = 0.0;
+    private double angStd = 0.0;
 
-      private static final double constrainedPnpXyStd = 0.4;
-      private static final double constrainedPnpAngStd = 0.14;
-      private static final Optional<ConstrainedSolvepnpParams> constrainedSolvePNPparam = 
-            Optional.of(new ConstrainedSolvepnpParams(true, 0.0));
-      public static final AprilTagFieldLayout kTagLayout =
-                  AprilTagFieldLayout.loadField(AprilTagFields.kDefaultField);
+    private static final double constrainedPnpXyStd = 0.4;
+    private static final double constrainedPnpAngStd = 0.14;
+    private static final Optional<ConstrainedSolvepnpParams> constrainedSolvePNPparam =
+        Optional.of(new ConstrainedSolvepnpParams(true, 0.0));
+    public static final AprilTagFieldLayout kTagLayout =
+        AprilTagFieldLayout.loadField(AprilTagFields.kDefaultField);
 
-      public Camera(String carmeraName, Transform3d robotToCameraTransform, VisionSystemSim visionSim, boolean useSim) {
-          camera = new PhotonCamera(carmeraName);
-          transform = robotToCameraTransform;
-          poseEstimator = new PhotonPoseEstimator(kTagLayout, 
-              PoseStrategy.CONSTRAINED_SOLVEPNP, transform);
+    public Camera(
+        String carmeraName,
+        Transform3d robotToCameraTransform,
+        VisionSystemSim visionSim,
+        boolean useSim) {
+      camera = new PhotonCamera(carmeraName);
+      transform = robotToCameraTransform;
+      poseEstimator =
+          new PhotonPoseEstimator(kTagLayout, PoseStrategy.CONSTRAINED_SOLVEPNP, transform);
 
-          if (Robot.isSimulation() && useSim) {
-            SimCameraProperties cameraProp = new SimCameraProperties();
-            // A 640 x 480 camera with a 100 degree diagonal FOV.
-            cameraProp.setCalibration(1280, 800, Rotation2d.fromDegrees(70));
-            // Approximate detection noise with average and standard deviation error in pixels.
-            cameraProp.setCalibError(0.25, 0.08);
-            // Set the camera image capture framerate (Note: this is limited by robot loop rate).
-            cameraProp.setFPS(10);
-            // The average and standard deviation in milliseconds of image data latency.
-            cameraProp.setAvgLatencyMs(35);
-            cameraProp.setLatencyStdDevMs(5);
+      if (Robot.isSimulation() && useSim) {
+        SimCameraProperties cameraProp = new SimCameraProperties();
+        // A 640 x 480 camera with a 100 degree diagonal FOV.
+        cameraProp.setCalibration(1280, 800, Rotation2d.fromDegrees(70));
+        // Approximate detection noise with average and standard deviation error in pixels.
+        cameraProp.setCalibError(0.25, 0.08);
+        // Set the camera image capture framerate (Note: this is limited by robot loop rate).
+        cameraProp.setFPS(10);
+        // The average and standard deviation in milliseconds of image data latency.
+        cameraProp.setAvgLatencyMs(35);
+        cameraProp.setLatencyStdDevMs(5);
 
-            PhotonCameraSim simCamera = new PhotonCameraSim(camera, cameraProp);
-            visionSim.addCamera(simCamera, robotToCameraTransform);
-          }
+        PhotonCameraSim simCamera = new PhotonCameraSim(camera, cameraProp);
+        visionSim.addCamera(simCamera, robotToCameraTransform);
       }
+    }
 
-      public void update(EstimateConsumer visionConsumer) {
-        poseEstimator.setPrimaryStrategy(PoseStrategy.CONSTRAINED_SOLVEPNP);
-        poseEstimator.addHeadingData(Timer.getFPGATimestamp(), poseSupplier.get().getRotation());
-        for (PhotonPipelineResult result : camera.getAllUnreadResults()) {
-            var estimate = poseEstimator.update(result, Optional.empty(), Optional.empty(), constrainedSolvePNPparam);
-            if (estimate.isEmpty() || estimate.get().targetsUsed.isEmpty()) {
-              estimatedPose = null;
-              continue;
-            }
+    public void update(EstimateConsumer visionConsumer) {
+      poseEstimator.setPrimaryStrategy(PoseStrategy.CONSTRAINED_SOLVEPNP);
+      poseEstimator.addHeadingData(Timer.getFPGATimestamp(), poseSupplier.get().getRotation());
+      for (PhotonPipelineResult result : camera.getAllUnreadResults()) {
+        var estimate =
+            poseEstimator.update(
+                result, Optional.empty(), Optional.empty(), constrainedSolvePNPparam);
+        if (estimate.isEmpty() || estimate.get().targetsUsed.isEmpty()) {
+          estimatedPose = null;
+          continue;
+        }
 
-            System.out.println(poseEstimator.getPrimaryStrategy());
-            System.out.println(estimate.get().strategy);
+        System.out.println(poseEstimator.getPrimaryStrategy());
+        System.out.println(estimate.get().strategy);
 
-            estimatedPose = estimate.get();
-            var target = estimatedPose.targetsUsed.get(0);
+        estimatedPose = estimate.get();
+        var target = estimatedPose.targetsUsed.get(0);
 
-            // Determine the distance from the camera to the tag.
-            double distance = target.bestCameraToTarget.getTranslation().getNorm();
+        // Determine the distance from the camera to the tag.
+        double distance = target.bestCameraToTarget.getTranslation().getNorm();
 
-            // Calculate the pose estimation weights for X/Y location. As
-            // distance increases, the tag is trusted exponentially less.
-            xyStd = constrainedPnpXyStd * distance * distance;
+        // Calculate the pose estimation weights for X/Y location. As
+        // distance increases, the tag is trusted exponentially less.
+        xyStd = constrainedPnpXyStd * distance * distance;
 
-            // Calculate the angular pose estimation weight. If we're solving via trig, reject
-            // the heading estimate to ensure the pose estimator doesn't "poison" itself with
-            // essentially duplicate data. Otherwise, weight the estimate similar to X/Y.
-            angStd = constrainedPnpAngStd * distance * distance;
+        angStd = constrainedPnpAngStd * distance * distance;
 
-            if (Robot.isReal()) {
-              visionConsumer.accept(estimatedPose.estimatedPose.toPose2d(), estimatedPose.timestampSeconds, VecBuilder.fill(xyStd, xyStd, angStd));
-            }
+        if (Robot.isReal()) {
+          visionConsumer.accept(
+              estimatedPose.estimatedPose.toPose2d(),
+              estimatedPose.timestampSeconds,
+              VecBuilder.fill(xyStd, xyStd, angStd));
         }
       }
+    }
   }
 }
