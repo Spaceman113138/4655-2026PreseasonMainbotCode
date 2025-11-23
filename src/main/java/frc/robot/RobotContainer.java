@@ -42,7 +42,9 @@ public class RobotContainer {
   private final CommandXboxController joystick = new CommandXboxController(0);
 
   public final CommandSwerveDrivetrain drivetrain = TunerConstants.createDrivetrain();
-  public final Vision vision = new Vision(drivetrain::addVisionMeasurement, drivetrain::getPose3d);
+  public final Vision vision =
+      new Vision(
+          drivetrain::addVisionMeasurement, drivetrain::getPose3d, drivetrain::getRotation3d);
 
   public RobotContainer() {
     configureBindings();
@@ -70,6 +72,10 @@ public class RobotContainer {
     final var idle = new SwerveRequest.Idle();
     RobotModeTriggers.disabled()
         .whileTrue(drivetrain.applyRequest(() -> idle).ignoringDisable(true));
+
+    RobotModeTriggers.disabled()
+        .negate()
+        .onTrue(Commands.runOnce(drivetrain::setPigeionHeadingToVision));
 
     joystick.a().whileTrue(drivetrain.applyRequest(() -> brake));
     joystick

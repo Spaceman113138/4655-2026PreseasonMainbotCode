@@ -16,6 +16,7 @@ import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.numbers.N1;
 import edu.wpi.first.math.numbers.N3;
+import edu.wpi.first.wpilibj.RobotState;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Robot;
@@ -36,6 +37,7 @@ public class Vision extends SubsystemBase {
   // Sim stuff
   VisionSystemSim visionSim = new VisionSystemSim("main");
   Supplier<Pose3d> poseSupplier;
+  Supplier<Rotation3d> pigeonRotationSupplier;
   private boolean useSim = true;
 
   private EstimateConsumer estimateConsumer;
@@ -46,35 +48,39 @@ public class Vision extends SubsystemBase {
   private Camera rightCamera =
       new Camera(
           "Right",
-          new Transform3d(0.22, -0.285, 0.494, new Rotation3d(0.0, 0.0, Math.toRadians(30))),
+          new Transform3d(0.22, -0.285, 0.494, new Rotation3d(0.0, 0.0, Math.toRadians(31))),
           visionSim,
           useSim);
   private Camera leftCamera =
       new Camera(
           "Left",
-          new Transform3d(0.22, 0.285, 0.494, new Rotation3d(0.0, 0.0, Math.toRadians(-30))),
+          new Transform3d(0.22, 0.285, 0.494, new Rotation3d(0.0, 0.0, Math.toRadians(-31))),
           visionSim,
           useSim);
   private Camera lowerRightCamera =
       new Camera(
           "Back",
           new Transform3d(
-              0.22, 0.285, (0.494 - 0.245) + 0.0381, new Rotation3d(0.0, 0.0, Math.toRadians(-30))),
+              0.22, 0.285, (0.494 - 0.245) + 0.0381, new Rotation3d(0.0, 0.0, Math.toRadians(-31))),
           visionSim,
           useSim);
   private Camera lowerLeftCamera =
       new Camera(
           "LowerLeft",
           new Transform3d(
-              0.22, -0.285, (0.494 - 0.245) + 0.0381, new Rotation3d(0.0, 0.0, Math.toRadians(30))),
+              0.22, -0.285, (0.494 - 0.245) + 0.0381, new Rotation3d(0.0, 0.0, Math.toRadians(31))),
           visionSim,
           useSim);
   private Camera[] cameras = {rightCamera, leftCamera, lowerRightCamera, lowerLeftCamera};
 
   /** Creates a new Vision. */
-  public Vision(EstimateConsumer poseConsumer, Supplier<Pose3d> simPoseSupplier) {
+  public Vision(
+      EstimateConsumer poseConsumer,
+      Supplier<Pose3d> simPoseSupplier,
+      Supplier<Rotation3d> headingSupplier) {
     estimateConsumer = poseConsumer;
     poseSupplier = simPoseSupplier;
+    pigeonRotationSupplier = headingSupplier;
 
     if (Robot.isSimulation() && useSim) {
       visionSim.addAprilTags(kTagLayout);
@@ -115,6 +121,8 @@ public class Vision extends SubsystemBase {
     private static final double constrainedPnpAngStd = 0.14;
     private static final Optional<ConstrainedSolvepnpParams> constrainedSolvePNPparam =
         Optional.of(new ConstrainedSolvepnpParams(true, 0.0));
+    private static final Optional<ConstrainedSolvepnpParams> teleopConstrainedSolveParam =
+        Optional.of(new ConstrainedSolvepnpParams(false, 0.1));
     public static final AprilTagFieldLayout kTagLayout =
         AprilTagFieldLayout.loadField(AprilTagFields.kDefaultField);
 
@@ -146,12 +154,18 @@ public class Vision extends SubsystemBase {
     }
 
     public void update(EstimateConsumer visionConsumer) {
-      poseEstimator.setPrimaryStrategy(PoseStrategy.MULTI_TAG_PNP_ON_COPROCESSOR);
-      poseEstimator.addHeadingData(Timer.getFPGATimestamp(), poseSupplier.get().getRotation());
+      poseEstimator.setPrimaryStrategy(
+          RobotState.isDisabled()
+              ? PoseStrategy.CONSTRAINED_SOLVEPNP
+              : PoseStrategy.CONSTRAINED_SOLVEPNP);
+      poseEstimator.addHeadingData(Timer.getFPGATimestamp(), pigeonRotationSupplier.get());
       for (PhotonPipelineResult result : camera.getAllUnreadResults()) {
         var estimate =
             poseEstimator.update(
-                result, Optional.empty(), Optional.empty(), constrainedSolvePNPparam);
+                result,
+                Optional.empty(),
+                Optional.empty(),
+                RobotState.isDisabled() ? constrainedSolvePNPparam : teleopConstrainedSolveParam);
 
         if (estimate.isEmpty() || estimate.get().targetsUsed.isEmpty()) {
           estimatedPose = null;
@@ -179,6 +193,10 @@ public class Vision extends SubsystemBase {
         xyStd = constrainedPnpXyStd * distance * distance;
 
         angStd = constrainedPnpAngStd * distance * distance;
+
+        if (!RobotState.isDisabled()) {
+          angStd = Double.MAX_VALUE;
+        }
 
         if (Robot.isReal()) {
           visionConsumer.accept(
